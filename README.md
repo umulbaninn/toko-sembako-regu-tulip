@@ -1,9 +1,12 @@
 # Sistem Integrasi Toko Grosir Sembako (Regu Tulip)
 
 Anggota dan tugas:
-- Alexa Agmelia Rahayu (1224016): Inventori Service, openapi Inventori
-- Berlina Shobirah (1224008): Kasir Service, test Kasir
-- Umul Banin (1224023): RabbitMQ, konsumen, kontrak event, dokumen, README
+- Berlina Shobirah (1224008): inti sistem. Penyesuaian stok dan event di Inventori,
+  transaksi dan konsumen event di Kasir, beserta test-nya
+- Alexa Agmelia Rahayu (1224016): CRUD barang, seeder, penanganan galat 404/422,
+  openapi.yaml Inventori, detail transaksi di Kasir.
+- Umul Banin (1224023): RabbitMQ, model dan laporan di Kasir, openapi.yaml Kasir,
+  kontrak event, diagram.
 
 ## Prasyarat
 Docker Desktop, WSL2 Ubuntu

@@ -1,0 +1,161 @@
+openapi: 3.1.0
+info:
+  title: Kasir Service - Toko Grosir Sembako
+  version: 1.0.0
+  description: Mencatat transaksi penjualan dengan memanggil Inventori Service secara sinkron, menyediakan laporan ringkas, dan menampilkan notifikasi supplier hasil konsumsi event.
+  contact:
+    name: Regu Tulip
+servers:
+  - url: http://localhost:8002/api
+tags:
+  - name: Transaksi
+    description: Pencatatan transaksi penjualan
+  - name: Laporan
+    description: Rekap dari data transaksi
+  - name: Notifikasi
+    description: Notifikasi supplier dari event stok
+paths:
+  /transaksi:
+    post:
+      tags: [Transaksi]
+      operationId: buatTransaksi
+      summary: Catat transaksi penjualan
+      description: Memanggil Inventori Service untuk mengurangi stok. Transaksi hanya tersimpan bila stok berhasil dikurangi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransaksiBaru"
+      responses:
+        "201":
+          description: Transaksi tercatat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Transaksi"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        "503":
+          $ref: "#/components/responses/Problem"
+  /transaksi/{nomor}:
+    get:
+      tags: [Transaksi]
+      operationId: detailTransaksi
+      summary: Detail transaksi
+      description: Mengembalikan satu transaksi berdasarkan nomor.
+      parameters:
+        - name: nomor
+          in: path
+          required: true
+          description: Nomor transaksi
+          schema:
+            type: string
+            example: TRX-20261021-AB12C
+      responses:
+        "200":
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Transaksi"
+        "404":
+          $ref: "#/components/responses/Problem"
+  /laporan/ringkasan:
+    get:
+      tags: [Laporan]
+      operationId: ringkasanLaporan
+      summary: Ringkasan penjualan
+      description: Jumlah transaksi dan total penjualan, dibaca dari basis data bersama modul Laporan.
+      responses:
+        "200":
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      jumlah_transaksi: { type: integer, example: 12 }
+                      total_penjualan: { type: integer, example: 1850000 }
+  /notifikasi-supplier:
+    get:
+      tags: [Notifikasi]
+      operationId: daftarNotifikasi
+      summary: Daftar notifikasi supplier
+      description: Notifikasi stok menipis hasil konsumsi event StokDisesuaikan.
+      responses:
+        "200":
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Notifikasi"
+components:
+  responses:
+    Problem:
+      description: Galat dalam format Problem Details (RFC 9457)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    TransaksiBaru:
+      type: object
+      required: [pelanggan, sku, jumlah]
+      properties:
+        pelanggan: { type: string, maxLength: 100, example: Warung Bu Ani }
+        sku: { type: string, pattern: "^BRG-[0-9]{3}$", example: BRG-001 }
+        jumlah: { type: integer, minimum: 1, example: 5 }
+        sumber: { type: string, enum: [whatsapp, langsung], example: whatsapp }
+    Transaksi:
+      type: object
+      properties:
+        nomor: { type: string, example: TRX-20261021-AB12C }
+        pelanggan: { type: string, example: Warung Bu Ani }
+        sku: { type: string, example: BRG-001 }
+        nama_barang: { type: string, example: Beras 5kg }
+        jumlah: { type: integer, example: 5 }
+        harga_satuan: { type: integer, example: 65000 }
+        total: { type: integer, example: 325000 }
+        sumber: { type: string, example: whatsapp }
+    Notifikasi:
+      type: object
+      properties:
+        message_id: { type: string, format: uuid }
+        sku: { type: string, example: BRG-002 }
+        nama: { type: string, example: Minyak Goreng 2L }
+        stok_sisa: { type: integer, example: 9 }
+        stok_minimum: { type: integer, example: 10 }
+        status: { type: string, example: menunggu }
+    Problem:
+      type: object
+      required: [title, status]
+      properties:
+        type: { type: string, example: "https://sembako.test/problems/inventori-tidak-tersedia" }
+        title: { type: string, example: Layanan inventori tidak tersedia }
+        status: { type: integer, example: 503 }
+        detail: { type: string }
+        instance: { type: string }
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }

@@ -1,0 +1,181 @@
+openapi: 3.1.0
+info:
+  title: Inventori Service - Toko Grosir Sembako
+  version: 1.0.0
+  description: Mengelola data barang dan stok. Dipanggil sinkron oleh Kasir Service dan menerbitkan event StokDisesuaikan ke RabbitMQ.
+  contact:
+    name: Regu Tulip
+servers:
+  - url: http://localhost:8001/api
+tags:
+  - name: Barang
+    description: Data barang dan penyesuaian stok
+paths:
+  /barang:
+    get:
+      tags: [Barang]
+      operationId: daftarBarang
+      summary: Daftar semua barang
+      description: Mengembalikan seluruh barang beserta stok saat ini.
+      responses:
+        "200":
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Barang"
+    post:
+      tags: [Barang]
+      operationId: tambahBarang
+      summary: Tambah barang baru
+      description: Membuat barang baru dengan SKU unik berpola BRG-nnn.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BarangBaru"
+      responses:
+        "201":
+          description: Barang dibuat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Barang"
+        "422":
+          $ref: "#/components/responses/Validasi"
+  /barang/{sku}:
+    get:
+      tags: [Barang]
+      operationId: detailBarang
+      summary: Detail satu barang
+      description: Mengembalikan satu barang berdasarkan SKU.
+      parameters:
+        - $ref: "#/components/parameters/Sku"
+      responses:
+        "200":
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Barang"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /barang/{sku}/penyesuaian-stok:
+    post:
+      tags: [Barang]
+      operationId: sesuaikanStok
+      summary: Kurangi atau tambah stok
+      description: >
+        Alasan penjualan mengurangi stok, alasan restok menambah stok.
+        Bila berhasil, layanan menerbitkan event StokDisesuaikan ke RabbitMQ.
+      parameters:
+        - $ref: "#/components/parameters/Sku"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PenyesuaianStok"
+      responses:
+        "200":
+          description: Stok berhasil disesuaikan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Barang"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/StokTidakCukup"
+        "422":
+          $ref: "#/components/responses/Validasi"
+components:
+  parameters:
+    Sku:
+      name: sku
+      in: path
+      required: true
+      description: SKU barang, tujuh karakter berpola BRG-nnn
+      schema:
+        type: string
+        pattern: "^BRG-[0-9]{3}$"
+        example: BRG-001
+  responses:
+    NotFound:
+      description: Barang tidak ditemukan
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Validasi:
+      description: Validasi gagal
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    StokTidakCukup:
+      description: Stok tidak mencukupi
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    Barang:
+      type: object
+      properties:
+        sku: { type: string, example: BRG-001 }
+        nama: { type: string, example: Beras 5kg }
+        harga: { type: integer, example: 65000 }
+        stok: { type: integer, example: 100 }
+        stok_minimum: { type: integer, example: 20 }
+    BarangBaru:
+      type: object
+      required: [sku, nama, harga]
+      properties:
+        sku: { type: string, pattern: "^BRG-[0-9]{3}$", example: BRG-004 }
+        nama: { type: string, maxLength: 100, example: Tepung Terigu 1kg }
+        harga: { type: integer, minimum: 1, example: 14000 }
+        stok: { type: integer, minimum: 0, example: 50 }
+        stok_minimum: { type: integer, minimum: 0, example: 10 }
+    PenyesuaianStok:
+      type: object
+      required: [jumlah, alasan, referensi]
+      properties:
+        jumlah: { type: integer, minimum: 1, example: 5 }
+        alasan: { type: string, enum: [penjualan, restok], example: penjualan }
+        referensi:
+          type: string
+          maxLength: 50
+          description: Nomor transaksi atau dokumen pemanggil
+          example: TRX-20261021-AB12C
+    Problem:
+      type: object
+      description: Problem Details (RFC 9457)
+      required: [title, status]
+      properties:
+        type: { type: string, example: "https://sembako.test/problems/stok-tidak-cukup" }
+        title: { type: string, example: Stok tidak mencukupi }
+        status: { type: integer, example: 409 }
+        detail: { type: string, example: "Stok Beras 5kg tersisa 3, diminta 5." }
+        instance: { type: string, example: /api/barang/BRG-001/penyesuaian-stok }
+        errors:
+          type: object
+          description: Hanya ada pada galat validasi 422
+          additionalProperties:
+            type: array
+            items: { type: string }

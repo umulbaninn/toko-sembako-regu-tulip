@@ -2,12 +2,10 @@
 
 namespace App\Events;
 
-use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Support\Str;
 
 class StokDisesuaikan
 {
-    use Dispatchable;
 
     public readonly string $messageId;
     public readonly string $terjadiPada;

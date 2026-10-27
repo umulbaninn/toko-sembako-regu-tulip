@@ -10,6 +10,7 @@ use App\Http\Requests\TambahBarangRequest;
 use App\Http\Resources\BarangResource;
 use App\Models\Barang;
 use Illuminate\Support\Facades\DB;
+use App\Models\Outbox;
 
 class BarangController extends Controller
 {
@@ -48,15 +49,19 @@ class BarangController extends Controller
             }
 
             $b->update(['stok' => $baru]);
+            $b->refresh();
+
+            // Transactional Outbox: event dicatat dalam transaksi yang SAMA dengan perubahan stok.
+            // Keduanya tersimpan bersama, atau tidak sama sekali.
+            Outbox::catat(new StokDisesuaikan(
+                $b->sku, $b->nama, $data['alasan'], $data['jumlah'],
+                $b->stok, $b->stok_minimum, $data['referensi'],
+            ));
+
             return $b;
         });
 
-        // Dipanggil hanya setelah transaksi DB berhasil
-        StokDisesuaikan::dispatch(
-            $barang->sku, $barang->nama, $data['alasan'], $data['jumlah'],
-            $barang->stok, $barang->stok_minimum, $data['referensi'],
-        );
-
+        // Pengiriman ke RabbitMQ diurus command outbox:relay, bukan controller.
         return new BarangResource($barang);
     }
 }

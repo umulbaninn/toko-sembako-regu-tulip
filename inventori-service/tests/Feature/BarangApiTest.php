@@ -2,10 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Events\StokDisesuaikan;
 use App\Models\Barang;
+use App\Models\Outbox;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class BarangApiTest extends TestCase
@@ -45,9 +44,8 @@ class BarangApiTest extends TestCase
         $this->problem($res);
     }
 
-    public function test_penjualan_mengurangi_stok_dan_menerbitkan_event(): void
+    public function test_penjualan_mengurangi_stok_dan_mencatat_outbox(): void
     {
-        Event::fake([StokDisesuaikan::class]);
         Barang::factory()->create(['sku' => 'BRG-001', 'stok' => 12, 'stok_minimum' => 10]);
 
         $this->postJson('/api/barang/BRG-001/penyesuaian-stok', [
@@ -55,41 +53,43 @@ class BarangApiTest extends TestCase
         ])->assertOk()->assertJsonPath('data.stok', 9);
 
         $this->assertDatabaseHas('barang', ['sku' => 'BRG-001', 'stok' => 9]);
-        Event::assertDispatched(StokDisesuaikan::class, fn ($e) =>
-            $e->routingKey() === 'stok.penjualan' && $e->stokSisa === 9);
+        $this->assertSame(1, Outbox::count());
     }
 
-    public function test_restok_menambah_stok(): void
+    public function test_restok_menambah_stok_dan_mencatat_outbox(): void
     {
-        Event::fake([StokDisesuaikan::class]);
         Barang::factory()->create(['sku' => 'BRG-001', 'stok' => 10]);
 
         $this->postJson('/api/barang/BRG-001/penyesuaian-stok', [
             'jumlah' => 5, 'alasan' => 'restok', 'referensi' => 'PO-1',
         ])->assertOk()->assertJsonPath('data.stok', 15);
 
-        Event::assertDispatched(StokDisesuaikan::class, fn ($e) => $e->routingKey() === 'stok.restok');
+        $this->assertDatabaseHas('barang', ['sku' => 'BRG-001', 'stok' => 15]);
+        $this->assertSame(1, Outbox::count());
     }
 
-    public function test_stok_tidak_cukup_409(): void
+    public function test_stok_tidak_cukup_409_dan_tidak_mencatat_outbox(): void
     {
-        Event::fake([StokDisesuaikan::class]);
         Barang::factory()->create(['sku' => 'BRG-001', 'stok' => 2]);
 
         $res = $this->postJson('/api/barang/BRG-001/penyesuaian-stok', [
             'jumlah' => 5, 'alasan' => 'penjualan', 'referensi' => 'TRX-2',
         ]);
+
         $res->assertStatus(409)->assertJsonPath('title', 'Stok tidak mencukupi');
         $this->problem($res);
         $this->assertDatabaseHas('barang', ['sku' => 'BRG-001', 'stok' => 2]);
-        Event::assertNotDispatched(StokDisesuaikan::class);
+        $this->assertSame(0, Outbox::count());
     }
 
     public function test_jumlah_nol_ditolak_422(): void
     {
         Barang::factory()->create(['sku' => 'BRG-001']);
+
         $this->postJson('/api/barang/BRG-001/penyesuaian-stok', [
             'jumlah' => 0, 'alasan' => 'penjualan', 'referensi' => 'TRX-3',
         ])->assertStatus(422)->assertJsonValidationErrors(['jumlah']);
+
+        $this->assertSame(0, Outbox::count());
     }
 }
